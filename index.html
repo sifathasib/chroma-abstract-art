@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHROMA // Interactive Abstract Rainbow Art</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #050508;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      color: #f3f4f6;
+      user-select: none;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+    .hud-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .interactive {
+      pointer-events: auto;
+    }
+    .glass-ui {
+      background: rgba(18, 18, 28, 0.65);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+    .rainbow-text {
+      background: linear-gradient(135deg, #ff007f, #ff7700, #ffdd00, #00ffaa, #00d4ff, #9900ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .rainbow-border-active {
+      border: 1.5px solid transparent;
+      background-image: linear-gradient(rgba(18, 18, 28, 0.8), rgba(18, 18, 28, 0.8)), 
+                        linear-gradient(135deg, #ff007f, #ffdd00, #00d4ff, #9900ff);
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+    }
+    .shimmer-glow {
+      animation: shimmer 4s ease-in-out infinite alternate;
+    }
+    @keyframes shimmer {
+      0% { filter: drop-shadow(0 0 10px rgba(255, 0, 128, 0.4)); }
+      50% { filter: drop-shadow(0 0 20px rgba(0, 212, 255, 0.6)); }
+      100% { filter: drop-shadow(0 0 15px rgba(255, 221, 0, 0.4)); }
+    }
+    /* Custom Slider */
+    input[type=range] {
+      accent-color: #00d4ff;
+    }
+  </style>
+</head>
+<body class="relative">
+  <!-- 3D WebGL Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- Interactive Heads-Up Display -->
+  <div class="hud-layer flex flex-col justify-between p-6">
+    <!-- Header: Title & Art Mode Switcher -->
+    <header class="flex items-center justify-between interactive">
+      <!-- Title -->
+      <div class="glass-ui rounded-2xl px-5 py-3 flex items-center space-x-3.5">
+        <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 to-cyan-400 p-[2px] shimmer-glow">
+          <div class="w-full h-full bg-[#08080f] rounded-full flex items-center justify-center">
+            <i data-lucide="sparkles" class="w-4 h-4 text-cyan-300"></i>
+          </div>
+        </div>
+        <div>
+          <h1 class="text-sm font-bold tracking-widest uppercase rainbow-text">CHROMA</h1>
+          <p class="text-[10px] text-gray-400 tracking-wider font-mono">INTERACTIVE ABSTRACT DIMENSION</p>
+        </div>
+      </div>
+
+      <!-- Mode Selector (The 3 Experiences) -->
+      <div class="glass-ui rounded-2xl p-1.5 flex items-center space-x-1.5">
+        <button id="mode-prism" class="mode-btn px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition flex items-center gap-2 rainbow-border-active text-white">
+          <i data-lucide="gem" class="w-3.5 h-3.5 text-rose-400"></i>
+          <span>1. Prism Bloom</span>
+        </button>
+        <button id="mode-ribbon" class="mode-btn px-4 py-2 rounded-xl text-xs font-semibold tracking-wide text-gray-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="waves" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span>2. Chroma Ribbon</span>
+        </button>
+        <button id="mode-mandala" class="mode-btn px-4 py-2 rounded-xl text-xs font-semibold tracking-wide text-gray-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="sun" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>3. Kaleido Mandala</span>
+        </button>
+      </div>
+
+      <!-- Quick Audio & Preset Controls -->
+      <div class="glass-ui rounded-2xl px-3 py-2 flex items-center space-x-3">
+        <button id="btn-sound" class="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition" title="Toggle Crystal Chimes">
+          <i data-lucide="volume-2" class="w-4 h-4 text-cyan-300"></i>
+        </button>
+        <div class="h-5 w-[1px] bg-white/10"></div>
+        <button id="btn-palette" class="px-3 py-1 text-xs font-medium bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-200 transition flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-red-500 via-green-500 to-blue-500"></span>
+          <span id="palette-label">Vibrant Rainbow</span>
+        </button>
+        <button id="btn-note" class="p-2 text-rose-400 hover:text-rose-300 hover:bg-white/10 rounded-xl transition" title="Secret Dedication">
+          <i data-lucide="heart" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Center Interactive Hint Banner (fades out after first interaction) -->
+    <div id="hint-banner" class="self-center glass-ui rounded-full px-6 py-2.5 text-xs text-gray-300 flex items-center gap-2.5 transition-opacity duration-1000 shadow-xl">
+      <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+      <span>Click & drag anywhere to sculpt rainbow light • Click for crystal sound pulses</span>
+    </div>
+
+    <!-- Secret Love / Dedication Modal -->
+    <div id="modal-note" class="hidden interactive fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
+      <div class="glass-ui rounded-3xl p-8 max-w-md w-full mx-4 border-rose-500/30 text-center relative shadow-2xl">
+        <button id="close-modal" class="absolute top-5 right-5 text-gray-400 hover:text-white text-sm">✕</button>
+        <div class="w-12 h-12 mx-auto rounded-full bg-gradient-to-tr from-rose-500 to-amber-400 p-[2px] mb-4">
+          <div class="w-full h-full bg-[#0a0a14] rounded-full flex items-center justify-center">
+            <i data-lucide="heart" class="w-5 h-5 text-rose-400"></i>
+          </div>
+        </div>
+        <h3 class="text-lg font-bold rainbow-text mb-2 tracking-wide">For an Extraordinary Creative Mind</h3>
+        <p class="text-sm text-gray-300 leading-relaxed font-light mb-6">
+          "Colors are the smiles of nature, and art is how the imagination breathes. This world of light was built for you to explore, play with, and color your own universe."
+        </p>
+        <button id="btn-modal-explore" class="px-6 py-2.5 rounded-full bg-gradient-to-r from-rose-500 via-amber-500 to-cyan-500 text-white text-xs font-semibold tracking-wider uppercase transition shadow-lg hover:opacity-90">
+          Continue Exploring
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Controls: Sliders, Custom Paint & Particle Burst -->
+    <footer class="flex items-end justify-between interactive space-x-6">
+      <!-- Art Controls (Morph Speed, Dispersion, Particle Count) -->
+      <div class="glass-ui rounded-2xl p-4 w-72 space-y-3">
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-gray-400 font-mono text-[10px] uppercase">Morphing Speed</span>
+          <span id="speed-val" class="font-mono text-cyan-300 text-xs">1.0x</span>
+        </div>
+        <input id="slider-speed" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full h-1 bg-white/10 rounded-lg cursor-pointer">
+
+        <div class="flex justify-between items-center text-xs pt-1">
+          <span class="text-gray-400 font-mono text-[10px] uppercase">Rainbow Dispersion</span>
+          <span id="dispersion-val" class="font-mono text-amber-300 text-xs">100%</span>
+        </div>
+        <input id="slider-dispersion" type="range" min="0.2" max="2.0" step="0.1" value="1.0" class="w-full h-1 bg-white/10 rounded-lg cursor-pointer">
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="glass-ui rounded-2xl p-3 flex items-center space-x-3">
+        <button id="btn-burst" class="px-4 py-2 bg-gradient-to-r from-rose-500 via-amber-500 to-cyan-500 hover:opacity-90 text-white text-xs font-semibold rounded-xl shadow-lg transition active:scale-95 flex items-center gap-2">
+          <i data-lucide="sparkle" class="w-4 h-4"></i>
+          <span>Release Rainbow Stardust</span>
+        </button>
+        <button id="btn-bloom" class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-medium rounded-xl transition flex items-center gap-2">
+          <i data-lucide="aperture" class="w-4 h-4 text-emerald-400"></i>
+          <span>Pulse Shockwave</span>
+        </button>
+        <button id="btn-reset-cam" class="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition" title="Center View">
+          <i data-lucide="crosshair" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Palette Preview / Mode Description -->
+      <div class="glass-ui rounded-2xl p-4 w-72 text-right">
+        <span id="mode-desc-title" class="text-xs font-bold text-white block mb-0.5">Kinetic Prism Bloom</span>
+        <p id="mode-desc-text" class="text-[11px] text-gray-400 leading-snug">
+          Breathing liquid-crystal geometry with chromatic refraction. Drag your mouse to sculpt organic waves.
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 3D Three.js Simulation & Web Audio API -->
+  <script>
+    lucide.createIcons();
+
+    // ------------------------------------------------------------------------
+    // 1. Audio Engine (Web Audio API Synthesizer - Pentatonic Crystal Chimes)
+    // ------------------------------------------------------------------------
+    let audioCtx = null;
+    let soundEnabled = true;
+    const CHIME_FREQS = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66]; // C5, D5, E5, G5, A5, C6, D6
+
+    function playCrystalChime(pitchIndex = null) {
+      if (!soundEnabled) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        const freq = (pitchIndex !== null && CHIME_FREQS[pitchIndex]) 
+          ? CHIME_FREQS[pitchIndex] 
+          : CHIME_FREQS[Math.floor(Math.random() * CHIME_FREQS.length)];
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        // Add subtle harmonic shimmer
+        const overtone = audioCtx.createOscillator();
+        const overtoneGain = audioCtx.createGain();
+        overtone.type = 'triangle';
+        overtone.frequency.setValueAtTime(freq * 2.01, audioCtx.currentTime);
+
+        gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
+
+        overtoneGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+        overtoneGain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 0.02);
+        overtoneGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.2);
+
+        osc.connect(gain);
+        overtone.connect(overtoneGain);
+        gain.connect(audioCtx.destination);
+        overtoneGain.connect(audioCtx.destination);
+
+        osc.start();
+        overtone.start();
+        osc.stop(audioCtx.currentTime + 1.9);
+        overtone.stop(audioCtx.currentTime + 1.3);
+      } catch (e) {
+        // Audio policy fallback
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Three.js Scene, Camera, Lighting & Post-effects
+    // ------------------------------------------------------------------------
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050508);
+    scene.fog = new THREE.FogExp2(0x050508, 0.012);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 32);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.3;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 8;
+    controls.maxDistance = 80;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const light1 = new THREE.PointLight(0xff007f, 2.5, 60);
+    light1.position.set(20, 20, 20);
+    scene.add(light1);
+
+    const light2 = new THREE.PointLight(0x00d4ff, 2.5, 60);
+    light2.position.set(-20, -20, 20);
+    scene.add(light2);
+
+    const light3 = new THREE.PointLight(0xffdd00, 2.0, 60);
+    light3.position.set(0, 25, -15);
+    scene.add(light3);
+
+    // ------------------------------------------------------------------------
+    // 3. Color Palettes Configuration
+    // ------------------------------------------------------------------------
+    const PALETTES = [
+      {
+        name: 'Vibrant Rainbow',
+        colors: [0xff007f, 0xff7700, 0xffdd00, 0x00ffaa, 0x00d4ff, 0x9900ff]
+      },
+      {
+        name: 'Pastel Aurora',
+        colors: [0xffb7b2, 0xffdac1, 0xe2f0cb, 0xb5ead7, 0xc7ceea, 0xf6d6ff]
+      },
+      {
+        name: 'Neon Cyberpunk',
+        colors: [0xff0055, 0x00ffff, 0xff00aa, 0x7700ff, 0x00ff66]
+      },
+      {
+        name: 'Golden Sunset',
+        colors: [0xff3366, 0xff6b35, 0xf7c59f, 0xefefd0, 0x004e89]
+      }
+    ];
+    let currentPaletteIdx = 0;
+
+    // Helper: HSV to RGB
+    function hsvToRgb(h, s, v) {
+      let r, g, b;
+      let i = Math.floor(h * 6);
+      let f = h * 6 - i;
+      let p = v * (1 - s);
+      let q = v * (1 - f * s);
+      let t = v * (1 - (1 - f) * s);
+      switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+      }
+      return new THREE.Color(r, g, b);
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Stardust Particles (Universal Background Rainbow Galaxy)
+    // ------------------------------------------------------------------------
+    const particleCount = 2000;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(particleCount * 3);
+    const particleColors = new Float32Array(particleCount * 3);
+    const particleVel = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      const r = 10 + Math.random() * 45;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+
+      particlePos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      particlePos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      particlePos[i * 3 + 2] = r * Math.cos(phi);
+
+      const col = hsvToRgb(i / particleCount, 0.85, 1.0);
+      particleColors[i * 3]     = col.r;
+      particleColors[i * 3 + 1] = col.g;
+      particleColors[i * 3 + 2] = col.b;
+
+      particleVel.push({
+        x: (Math.random() - 0.5) * 0.04,
+        y: (Math.random() - 0.5) * 0.04,
+        z: (Math.random() - 0.5) * 0.04
+      });
+    }
+
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+    particleGeo.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+    const particleMat = new THREE.PointsMaterial({
+      size: 0.28,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending
+    });
+    const particleSystem = new THREE.Points(particleGeo, particleMat);
+    scene.add(particleSystem);
+
+    // ------------------------------------------------------------------------
+    // 5. MODE 1: The Kinetic Rainbow Prism Bloom (Breathing Sculpture)
+    // ------------------------------------------------------------------------
+    const prismGroup = new THREE.Group();
+
+    // High density icosahedron geometry
+    const prismBaseGeo = new THREE.IcosahedronGeometry(7, 32);
+    const prismPositions = prismBaseGeo.attributes.position.clone();
+    const prismCount = prismBaseGeo.attributes.position.count;
+    const prismColors = new Float32Array(prismCount * 3);
+
+    for (let i = 0; i < prismCount; i++) {
+      const hue = (i / prismCount) % 1.0;
+      const col = hsvToRgb(hue, 0.9, 1.0);
+      prismColors[i * 3]     = col.r;
+      prismColors[i * 3 + 1] = col.g;
+      prismColors[i * 3 + 2] = col.b;
+    }
+    prismBaseGeo.setAttribute('color', new THREE.BufferAttribute(prismColors, 3));
+
+    const prismMat = new THREE.MeshPhysicalMaterial({
+      vertexColors: true,
+      roughness: 0.15,
+      metalness: 0.85,
+      transmission: 0.6,
+      ior: 1.6,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.1,
+      wireframe: false
+    });
+    const prismMesh = new THREE.Mesh(prismBaseGeo, prismMat);
+    prismGroup.add(prismMesh);
+
+    // Outer Iridescent Glass Wireframe Cage
+    const cageGeo = new THREE.IcosahedronGeometry(7.3, 3);
+    const cageMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.15
+    });
+    const cageMesh = new THREE.Mesh(cageGeo, cageMat);
+    prismGroup.add(cageMesh);
+
+    scene.add(prismGroup);
+
+    // ------------------------------------------------------------------------
+    // 6. MODE 2: The Fluid Chroma Ribbon (Flowing Silk Ribbons)
+    // ------------------------------------------------------------------------
+    const ribbonGroup = new THREE.Group();
+    ribbonGroup.visible = false;
+
+    const RIBBON_COUNT = 7;
+    const ribbons = [];
+
+    for (let r = 0; r < RIBBON_COUNT; r++) {
+      const curvePoints = [];
+      const numPts = 60;
+      for (let p = 0; p < numPts; p++) {
+        curvePoints.push(new THREE.Vector3(0, 0, 0));
+      }
+      const curve = new THREE.CatmullRomCurve3(curvePoints);
+      const tubeGeo = new THREE.TubeGeometry(curve, 60, 0.45, 12, false);
+
+      const hue = r / RIBBON_COUNT;
+      const rColor = hsvToRgb(hue, 0.9, 1.0);
+
+      const rMat = new THREE.MeshStandardMaterial({
+        color: rColor,
+        emissive: rColor,
+        emissiveIntensity: 0.4,
+        roughness: 0.2,
+        metalness: 0.8
+      });
+      const tubeMesh = new THREE.Mesh(tubeGeo, rMat);
+      ribbonGroup.add(tubeMesh);
+      ribbons.push({ mesh: tubeMesh, offset: r * (Math.PI * 2 / RIBBON_COUNT), hue });
+    }
+    scene.add(ribbonGroup);
+
+    // ------------------------------------------------------------------------
+    // 7. MODE 3: The Chromatic Kaleidoscope Mandala
+    // ------------------------------------------------------------------------
+    const mandalaGroup = new THREE.Group();
+    mandalaGroup.visible = false;
+
+    const mandalaLayers = [];
+    const MANDALA_RINGS = 5;
+
+    for (let layer = 0; layer < MANDALA_RINGS; layer++) {
+      const ringGroup = new THREE.Group();
+      const petalCount = 8 + layer * 4;
+      const radius = 3.5 + layer * 2.8;
+
+      for (let p = 0; p < petalCount; p++) {
+        const angle = (p / petalCount) * Math.PI * 2;
+        const petalGeo = new THREE.ConeGeometry(0.8 + layer * 0.2, 3.2 + layer * 0.8, 4);
+        petalGeo.rotateX(Math.PI / 2);
+
+        const hue = (p / petalCount + layer * 0.15) % 1.0;
+        const col = hsvToRgb(hue, 0.9, 1.0);
+
+        const petalMat = new THREE.MeshPhysicalMaterial({
+          color: col,
+          emissive: col,
+          emissiveIntensity: 0.35,
+          roughness: 0.2,
+          metalness: 0.8,
+          transmission: 0.4
+        });
+
+        const petal = new THREE.Mesh(petalGeo, petalMat);
+        petal.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+        petal.rotation.z = angle + Math.PI / 2;
+        ringGroup.add(petal);
+      }
+      mandalaGroup.add(ringGroup);
+      mandalaLayers.push({ group: ringGroup, speed: (layer % 2 === 0 ? 1 : -1) * (0.005 + layer * 0.003) });
+    }
+
+    // Glowing Center Core
+    const coreMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(2.0, 32, 32),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xff00d4,
+        emissiveIntensity: 0.9,
+        roughness: 0.1
+      })
+    );
+    mandalaGroup.add(coreMesh);
+    scene.add(mandalaGroup);
+
+    // ------------------------------------------------------------------------
+    // 8. Interaction State & Mouse Waves
+    // ------------------------------------------------------------------------
+    let currentMode = 'prism'; // 'prism' | 'ribbon' | 'mandala'
+    let morphSpeed = 1.0;
+    let dispersion = 1.0;
+    let shockwavePower = 0.0;
+
+    const mouse = { x: 0, y: 0, targetX: 0, targetY: 0, isDown: false };
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.targetX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.targetY = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      // Hide hint after first purposeful move
+      const hint = document.getElementById('hint-banner');
+      if (hint && !hint.classList.contains('opacity-0')) {
+        setTimeout(() => hint.classList.add('opacity-0'), 2500);
+      }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.interactive')) return;
+      mouse.isDown = true;
+      triggerShockwave();
+      playCrystalChime();
+    });
+
+    window.addEventListener('mouseup', () => {
+      mouse.isDown = false;
+    });
+
+    function triggerShockwave() {
+      shockwavePower = 2.5;
+    }
+
+    // Mode Switching Logic
+    function switchMode(newMode) {
+      currentMode = newMode;
+      prismGroup.visible = (newMode === 'prism');
+      ribbonGroup.visible = (newMode === 'ribbon');
+      mandalaGroup.visible = (newMode === 'mandala');
+
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        b.classList.remove('rainbow-border-active', 'text-white');
+        b.classList.add('text-gray-400');
+      });
+
+      const activeBtn = document.getElementById(`mode-${newMode}`);
+      activeBtn.classList.add('rainbow-border-active', 'text-white');
+      activeBtn.classList.remove('text-gray-400');
+
+      const descMap = {
+        prism: {
+          title: "Kinetic Prism Bloom",
+          desc: "Breathing liquid-crystal geometry with chromatic refraction. Drag your mouse to sculpt organic waves."
+        },
+        ribbon: {
+          title: "Fluid Chroma Ribbon",
+          desc: "Endless flowing ribbons of iridescent rainbow silk. Move to weave dynamic currents in space."
+        },
+        mandala: {
+          title: "Kaleido Mandala",
+          desc: "Concentric rings of iridescent crystal petals spinning in kaleidoscopic harmony."
+        }
+      };
+
+      document.getElementById('mode-desc-title').textContent = descMap[newMode].title;
+      document.getElementById('mode-desc-text').textContent = descMap[newMode].desc;
+
+      playCrystalChime(2);
+      triggerShockwave();
+    }
+
+    document.getElementById('mode-prism').addEventListener('click', () => switchMode('prism'));
+    document.getElementById('mode-ribbon').addEventListener('click', () => switchMode('ribbon'));
+    document.getElementById('mode-mandala').addEventListener('click', () => switchMode('mandala'));
+
+    // Sound toggle
+    document.getElementById('btn-sound').addEventListener('click', (e) => {
+      soundEnabled = !soundEnabled;
+      const icon = document.querySelector('#btn-sound i');
+      if (soundEnabled) {
+        icon.setAttribute('data-lucide', 'volume-2');
+        playCrystalChime(4);
+      } else {
+        icon.setAttribute('data-lucide', 'volume-x');
+      }
+      lucide.createIcons();
+    });
+
+    // Palette Switcher
+    document.getElementById('btn-palette').addEventListener('click', () => {
+      currentPaletteIdx = (currentPaletteIdx + 1) % PALETTES.length;
+      const pal = PALETTES[currentPaletteIdx];
+      document.getElementById('palette-label').textContent = pal.name;
+
+      // Update lights & materials to reflect palette
+      light1.color.set(pal.colors[0]);
+      light2.color.set(pal.colors[1] || pal.colors[0]);
+      light3.color.set(pal.colors[2] || pal.colors[0]);
+
+      playCrystalChime(3);
+    });
+
+    // Sliders
+    document.getElementById('slider-speed').addEventListener('input', (e) => {
+      morphSpeed = parseFloat(e.target.value);
+      document.getElementById('speed-val').textContent = `${morphSpeed.toFixed(1)}x`;
+    });
+
+    document.getElementById('slider-dispersion').addEventListener('input', (e) => {
+      dispersion = parseFloat(e.target.value);
+      document.getElementById('dispersion-val').textContent = `${Math.round(dispersion * 100)}%`;
+    });
+
+    // Action Buttons
+    document.getElementById('btn-burst').addEventListener('click', () => {
+      triggerShockwave();
+      playCrystalChime(5);
+      // Accelerate all stardust particles outward
+      for (let i = 0; i < particleCount; i++) {
+        particleVel[i].x *= 3.5;
+        particleVel[i].y *= 3.5;
+        particleVel[i].z *= 3.5;
+      }
+    });
+
+    document.getElementById('btn-bloom').addEventListener('click', () => {
+      triggerShockwave();
+      playCrystalChime(0);
+    });
+
+    document.getElementById('btn-reset-cam').addEventListener('click', () => {
+      controls.reset();
+      camera.position.set(0, 0, 32);
+    });
+
+    // Secret Dedication Modal
+    const modalNote = document.getElementById('modal-note');
+    document.getElementById('btn-note').addEventListener('click', () => {
+      modalNote.classList.remove('hidden');
+      playCrystalChime(4);
+    });
+    document.getElementById('close-modal').addEventListener('click', () => modalNote.classList.add('hidden'));
+    document.getElementById('btn-modal-explore').addEventListener('click', () => modalNote.classList.add('hidden'));
+
+    // ------------------------------------------------------------------------
+    // 9. Main Animation Engine (60 FPS)
+    // ------------------------------------------------------------------------
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const time = clock.getElapsedTime() * morphSpeed;
+      const delta = clock.getDelta();
+
+      // Smooth mouse follow
+      mouse.x += (mouse.targetX - mouse.x) * 0.08;
+      mouse.y += (mouse.targetY - mouse.y) * 0.08;
+
+      // Orbit Lights
+      light1.position.x = Math.sin(time * 0.7) * 25;
+      light1.position.y = Math.cos(time * 0.5) * 25;
+      light2.position.x = -Math.sin(time * 0.6) * 25;
+      light2.position.z = Math.cos(time * 0.8) * 25;
+
+      // Decay shockwave
+      if (shockwavePower > 0.01) {
+        shockwavePower *= 0.94;
+      }
+
+      // --- ANIMATE MODE 1: PRISM BLOOM ---
+      if (currentMode === 'prism') {
+        const posAttr = prismBaseGeo.attributes.position;
+        const originalPos = prismPositions.array;
+        const currentPos = posAttr.array;
+        const colorAttr = prismBaseGeo.attributes.color;
+        const colors = colorAttr.array;
+
+        for (let i = 0; i < prismCount; i++) {
+          const ix = i * 3;
+          const iy = i * 3 + 1;
+          const iz = i * 3 + 2;
+
+          const ox = originalPos[ix];
+          const oy = originalPos[iy];
+          const oz = originalPos[iz];
+
+          // 3D Harmonic Noise Math
+          const wave1 = Math.sin(ox * 0.35 + time * 1.5) * Math.cos(oy * 0.35 + time * 1.2);
+          const wave2 = Math.sin(oz * 0.4 + time * 1.8) * 0.5;
+          const mouseDist = Math.hypot(ox - mouse.x * 10, oy - mouse.y * 10);
+          const mouseRipple = Math.sin(mouseDist * 0.6 - time * 3.0) * (1.2 / (1.0 + mouseDist * 0.2));
+
+          const displacement = 1.0 + (wave1 + wave2 + mouseRipple * 0.6) * 0.28 * dispersion + shockwavePower * 0.35;
+
+          currentPos[ix] = ox * displacement;
+          currentPos[iy] = oy * displacement;
+          currentPos[iz] = oz * displacement;
+
+          // Shift chromatic rainbow colors dynamically across surface
+          const dynamicHue = ((i / prismCount) + time * 0.1 + (wave1 * 0.2)) % 1.0;
+          const c = hsvToRgb(dynamicHue, 0.85, 1.0);
+          colors[ix] = c.r;
+          colors[iy] = c.g;
+          colors[iz] = c.b;
+        }
+        posAttr.needsUpdate = true;
+        colorAttr.needsUpdate = true;
+        prismBaseGeo.computeVertexNormals();
+
+        prismGroup.rotation.y = time * 0.2 + mouse.x * 0.5;
+        prismGroup.rotation.x = Math.sin(time * 0.15) * 0.2 - mouse.y * 0.5;
+        cageMesh.rotation.y = -time * 0.15;
+      }
+
+      // --- ANIMATE MODE 2: CHROMA RIBBON ---
+      if (currentMode === 'ribbon') {
+        ribbons.forEach((rib, idx) => {
+          const numPts = 60;
+          const newPts = [];
+          for (let p = 0; p < numPts; p++) {
+            const u = (p / numPts) * Math.PI * 4;
+            const radius = 9 + Math.sin(u * 2 + time * 2.0 + rib.offset) * 3.5;
+            const x = Math.cos(u + time * 0.8) * radius;
+            const y = Math.sin(u * 3 + time * 1.2 + rib.offset) * 4.5 + mouse.y * 6;
+            const z = Math.sin(u + time * 0.8) * radius + mouse.x * 6;
+            newPts.push(new THREE.Vector3(x, y, z));
+          }
+          const curve = new THREE.CatmullRomCurve3(newPts);
+          rib.mesh.geometry.dispose();
+          rib.mesh.geometry = new THREE.TubeGeometry(curve, 60, 0.45 + shockwavePower * 0.1, 12, false);
+
+          // Evolving chromatic glow
+          const hue = (rib.hue + time * 0.08) % 1.0;
+          const col = hsvToRgb(hue, 0.9, 1.0);
+          rib.mesh.material.color.set(col);
+          rib.mesh.material.emissive.set(col);
+        });
+        ribbonGroup.rotation.y = time * 0.15;
+      }
+
+      // --- ANIMATE MODE 3: KALEIDO MANDALA ---
+      if (currentMode === 'mandala') {
+        mandalaLayers.forEach((layer, idx) => {
+          layer.group.rotation.z += layer.speed * morphSpeed * (1.0 + shockwavePower * 0.5);
+          const breathe = 1.0 + Math.sin(time * 2.0 + idx) * 0.08 + shockwavePower * 0.2;
+          layer.group.scale.set(breathe, breathe, breathe);
+        });
+        coreMesh.scale.setScalar(1.0 + Math.sin(time * 4) * 0.2 + shockwavePower * 0.5);
+        mandalaGroup.rotation.x = mouse.y * 0.4;
+        mandalaGroup.rotation.y = mouse.x * 0.4;
+      }
+
+      // --- ANIMATE STARDUST PARTICLES ---
+      const pPositions = particleGeo.attributes.position.array;
+      for (let i = 0; i < particleCount; i++) {
+        const ix = i * 3;
+        const iy = i * 3 + 1;
+        const iz = i * 3 + 2;
+
+        pPositions[ix] += particleVel[i].x * morphSpeed;
+        pPositions[iy] += particleVel[i].y * morphSpeed;
+        pPositions[iz] += particleVel[i].z * morphSpeed;
+
+        // Gentle cosmic boundary wrap
+        const d = Math.hypot(pPositions[ix], pPositions[iy], pPositions[iz]);
+        if (d > 55) {
+          pPositions[ix] *= 0.2;
+          pPositions[iy] *= 0.2;
+          pPositions[iz] *= 0.2;
+        }
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+      particleSystem.rotation.y = time * 0.03;
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Responsive Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
